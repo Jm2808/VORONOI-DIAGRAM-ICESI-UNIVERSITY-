@@ -1,0 +1,985 @@
+<meta charset="utf-8">
+<title>Voronoi del Campus</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: cuaderno de campo — el plano dibujado del campus como hoja principal, panel de anotaciones a la derecha. */
+:root {
+  /* Paleta «Mercado de colores»: crema luminoso, verde hoja, amarillo maíz; especies en rosa antiguo y gris azulado */
+  --bg: #f6ecd9;
+  --paper: #fffaf0;
+  --paper-2: #f1e6d2;
+  --ink: #2b2118;
+  --ink-soft: #6b5a48;
+  --line: rgba(43, 33, 24, .14);
+  --line-strong: rgba(43, 33, 24, .34);
+  --accent: #3f8a3c;
+  --sp-a: #c47f89;
+  --sp-b: #7d91a3;
+  --cell-a: #d8a1a8;
+  --cell-b: #9fb0bf;
+  --pt-a: #9a4b57;
+  --pt-b: #4c6275;
+  --danger: #c0392b;
+  --z-green: #5fa35a;
+  --z-green-dot: #6db368;
+  --z-bldg: #ffffff;
+  --z-bldg-edge: #c9bba3;
+  --z-park: #f2c14e;
+  --z-road: #fdf7ec;
+  --z-house: #cdc3b4;
+  --z-house-line: #bab09f;
+  --z-label: #2b2118;
+  --cell-line: #24344d;
+  --shadow: 0 1px 0 rgba(255, 255, 255, .7) inset, 0 10px 30px -18px rgba(43, 33, 24, .45);
+  --f-display: "Young Serif", "Georgia", serif;
+  --f-body: "Nunito Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+/* Diseño fijo: la página siempre usa la paleta clara elegida, sin importar el tema del dispositivo. */
+
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--ink); }
+body {
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 40px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+header h1 {
+  font-family: var(--f-display); font-weight: 400; font-size: clamp(30px, 4.4vw, 46px);
+  line-height: 1.02; margin: 0; letter-spacing: -.01em; text-wrap: balance;
+}
+header h1 em { font-style: normal; color: var(--accent); }
+header p { margin: 6px 0 0; color: var(--ink-soft); max-width: 62ch; }
+.dims {
+  font-family: var(--f-mono); font-size: 12.5px; color: var(--ink-soft);
+  border: 1px solid var(--line-strong); border-radius: 999px; padding: 5px 12px; white-space: nowrap;
+}
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; align-items: start; }
+@media (max-width: 960px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+.sheet { background: var(--paper); border-radius: 18px; box-shadow: var(--shadow); min-width: 0; }
+.map-sheet { padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 12px; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; }
+.group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.label { font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-soft); }
+
+.chip {
+  font: 600 14px var(--f-body); color: var(--ink); background: transparent;
+  border: 1px solid var(--line-strong); border-radius: 999px; padding: 6px 14px 6px 10px;
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer; transition: background .15s, border-color .15s;
+  max-width: 200px;
+}
+.chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip:hover { background: var(--paper-2); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.dot { width: 11px; height: 11px; border-radius: 50%; flex: none; box-shadow: 0 0 0 2px var(--paper); }
+.dot.a { background: var(--sp-a); } .dot.b { background: var(--sp-b); }
+
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px; gap: 2px; }
+.seg button {
+  font: 600 13px var(--f-body); color: var(--ink-soft); background: transparent; border: 0;
+  border-radius: 999px; padding: 5px 12px; cursor: pointer; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.seg button[aria-pressed="true"] { background: var(--paper-2); color: var(--ink); box-shadow: 0 0 0 1px var(--line-strong) inset; }
+
+.map-box { position: relative; background: var(--paper-2); border-radius: 12px; overflow: hidden; }
+#map { display: block; width: 100%; height: auto; touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
+#map .pt { cursor: grab; }
+#map.dragging, #map.dragging .pt { cursor: grabbing; }
+
+.overlay-empty {
+  position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%);
+  background: var(--paper); color: var(--ink); border-radius: 14px; padding: 14px 18px; text-align: center;
+  max-width: min(320px, 80%); font-size: 14px; pointer-events: none; box-shadow: 0 10px 30px -14px rgba(0,0,0,.5);
+}
+.overlay-empty b { font-family: var(--f-display); font-weight: 400; font-size: 18px; display: block; margin-bottom: 4px; }
+.caption {
+  position: absolute; left: 12px; top: 10px; right: 12px; pointer-events: none;
+  display: flex; justify-content: center;
+}
+.caption span {
+  background: var(--ink); color: var(--paper); border-radius: 12px; padding: 6px 14px; font-size: 13px; text-align: center;
+  box-shadow: 0 8px 20px -10px rgba(0,0,0,.6);
+}
+.caption .mono { opacity: .8; }
+
+.tip {
+  position: absolute; pointer-events: none; background: var(--ink); color: var(--paper);
+  border-radius: 10px; padding: 8px 11px; font-size: 12.5px; line-height: 1.4; min-width: 160px;
+  transform: translate(-50%, calc(-100% - 14px)); box-shadow: 0 8px 20px -10px rgba(0,0,0,.6); z-index: 2;
+}
+.tip b { font-weight: 700; }
+.tip .mono { font-family: var(--f-mono); font-size: 11.5px; opacity: .85; }
+
+.statusbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; font-size: 13px; color: var(--ink-soft); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 10px; border-radius: 3px; border: 1px solid var(--line-strong); }
+.sw.green { background: var(--z-green); } .sw.bldg { background: var(--z-bldg); border-color: var(--z-bldg-edge); }
+.sw.park { background: var(--z-park); } .sw.road { background: var(--z-road); }
+.sw.house { background: repeating-linear-gradient(45deg, var(--z-house) 0 3px, var(--z-house-line) 3px 4px); border-color: var(--z-road); border-width: 2px; }
+.list td input.bad { border-color: var(--danger); color: var(--danger); }
+.list .warn { color: var(--danger); font-family: var(--f-body); }
+.clear-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.clear-row .btn { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; }
+.clear-row .btn .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+.clear-row .dot { width: 9px; height: 9px; box-shadow: none; }
+.clear-row .btn.armed .dot { box-shadow: 0 0 0 1.5px var(--paper); }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.hint { font-size: 13px; color: var(--ink-soft); }
+kbd { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; }
+
+aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.panel { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 12px; }
+.panel h2 { font-family: var(--f-display); font-weight: 400; font-size: 19px; margin: 0; line-height: 1.2; }
+.panel .sub { font-size: 13px; color: var(--ink-soft); margin: -6px 0 0; }
+
+.species-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.species-row .dot { width: 14px; height: 14px; }
+.species-row .count { font-family: var(--f-mono); font-size: 12.5px; color: var(--ink-soft); }
+
+input[type="text"], input[type="number"], select, textarea {
+  font: 15px var(--f-body); color: var(--ink); background: var(--paper-2);
+  border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; width: 100%; min-width: 0;
+}
+input[type="number"] { font-family: var(--f-mono); font-size: 14px; }
+textarea { font-family: var(--f-mono); font-size: 12.5px; resize: vertical; min-height: 80px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.coord-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.coord-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+.coord-form .full { grid-column: 1 / -1; }
+.form-msg { font-size: 12.5px; color: var(--danger); min-height: 1.2em; margin: 0; }
+
+.btn {
+  font: 700 14px var(--f-body); border-radius: 10px; padding: 9px 14px; cursor: pointer;
+  border: 1px solid var(--ink); background: var(--ink); color: var(--paper);
+}
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line-strong); }
+.btn.ghost:hover { background: var(--paper-2); }
+.btn.small { font-size: 13px; padding: 6px 12px; border-radius: 999px; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+.btn.danger.armed { background: var(--danger); color: var(--paper); }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.list { max-height: 330px; overflow: auto; margin: 0 -6px; padding: 0 6px; }
+.list table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.list th { text-align: left; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); font-weight: 700; padding: 4px 4px 6px; position: sticky; top: 0; background: var(--paper); }
+.list td { padding: 3px 4px; border-top: 1px solid var(--line); vertical-align: middle; }
+.list tr.sel td { background: var(--paper-2); }
+.list td input[type="number"] { padding: 3px 6px; font-size: 12.5px; width: 64px; border-radius: 6px; }
+.list .tag { font-family: var(--f-mono); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+.list .tag .dot { width: 9px; height: 9px; box-shadow: none; }
+.list .area { font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft); text-align: right; white-space: nowrap; }
+.x-btn { border: 0; background: transparent; color: var(--ink-soft); font-size: 17px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.x-btn:hover { color: var(--danger); background: var(--paper-2); }
+.empty { font-size: 13px; color: var(--ink-soft); padding: 8px 0; margin: 0; }
+
+.share-bar { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: var(--paper-2); }
+.share-bar span { display: block; height: 100%; transition: width .35s ease; }
+.share-bar .a { background: var(--sp-a); } .share-bar .b { background: var(--sp-b); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stats:empty { display: none; }
+.stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat .k { font-size: 12px; color: var(--ink-soft); display: flex; align-items: center; gap: 6px; }
+.stat .k .dot { width: 9px; height: 9px; box-shadow: none; }
+.stat .v { font-family: var(--f-display); font-size: 22px; line-height: 1.15; }
+.stat .v small { font-family: var(--f-body); font-size: 12px; color: var(--ink-soft); }
+.reading { font-size: 13.5px; margin: 0; color: var(--ink); }
+
+.layers { display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
+.row input[type="range"] { flex: 1; max-width: 170px; accent-color: var(--accent); }
+.row select { width: auto; }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.switch input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--paper); padding: 9px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
+  z-index: 20; box-shadow: 0 10px 30px -10px rgba(0,0,0,.6); max-width: calc(100vw - 32px); text-align: center;
+}
+
+/* ---------- SVG ---------- */
+#map .z-green { fill: var(--z-green); }
+#map .z-dots circle { fill: var(--z-green-dot); }
+#map .z-bldg { fill: var(--z-bldg); stroke: var(--z-bldg-edge); stroke-width: .45; stroke-linejoin: round; }
+#map .z-park { fill: var(--z-park); stroke: var(--z-bldg-edge); stroke-width: .3; stroke-dasharray: 1.2 .8; }
+#map .z-park-lines line { stroke: var(--z-road); stroke-opacity: .55; stroke-width: .3; }
+#map .z-road { fill: none; stroke: var(--z-road); stroke-linecap: round; stroke-linejoin: round; }
+#map .z-house { fill: var(--z-house); }
+#map .z-hatch line { stroke: var(--z-house-line); stroke-width: .6; }
+#map .z-wall { fill: none; stroke: var(--z-road); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+#map .z-label { fill: var(--z-label); font-family: var(--f-body); font-weight: 700; font-size: 3.1px; letter-spacing: .25px; text-anchor: middle; pointer-events: none; }
+#map .z-label.soft { font-weight: 600; opacity: .55; font-style: italic; }
+#map .frame { fill: none; stroke: var(--ink); stroke-width: .5; }
+#map .grid line { stroke: var(--ink); stroke-opacity: .13; stroke-width: .2; }
+#map .grid line.major { stroke-opacity: .28; stroke-width: .3; }
+#map .axis text { fill: var(--ink-soft); font-family: var(--f-mono); font-size: 3.4px; }
+#map .axis .title { fill: var(--ink); font-family: var(--f-body); font-weight: 700; font-size: 3.4px; letter-spacing: .3px; }
+#map .cell { stroke: var(--cell-line); stroke-width: .7; stroke-linejoin: round; }
+#map .cell.a { fill: var(--cell-a); }
+#map .cell.b { fill: var(--cell-b); }
+#map .front { fill: none; stroke-width: .5; stroke-opacity: .9; }
+#map .front.a { stroke: var(--sp-a); } #map .front.b { stroke: var(--sp-b); }
+#map .del line { stroke: var(--ink); stroke-opacity: .55; stroke-width: .25; stroke-dasharray: 1 .8; }
+#map .hover { fill: none; stroke: var(--ink); stroke-width: .9; pointer-events: none; }
+#map .pt circle.core { stroke: var(--paper); stroke-width: .9; }
+#map .pt.a circle.core { fill: var(--pt-a); }
+#map .pt.b circle.core { fill: var(--pt-b); }
+#map .pt circle.hit { fill: transparent; }
+#map .pt.dim { opacity: .3; }
+#map .pt.new circle.core { animation: pop .5s cubic-bezier(.3,1.6,.5,1) both; transform-box: fill-box; transform-origin: center; }
+#map .pt .pulse { fill: none; stroke-width: .5; animation: pulse 1.1s ease-out both; transform-box: fill-box; transform-origin: center; }
+#map .pt.a .pulse { stroke: var(--sp-a); } #map .pt.b .pulse { stroke: var(--sp-b); }
+#map .ring { fill: none; stroke: var(--ink); stroke-width: .45; }
+@keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+@keyframes pulse { from { transform: scale(.4); opacity: 1; } to { transform: scale(3); opacity: 0; } }
+
+@media (max-width: 560px) {
+  .stats { grid-template-columns: 1fr; }
+  .toolbar { flex-direction: column; align-items: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+  #map .pt.new circle.core, #map .pt .pulse { animation: none; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Voronoi <em>del</em> Campus</h1>
+      <p>Registra dónde encontraste cada planta y mira cómo el campus se reparte en zonas de influencia: cada celda es el área que está más cerca de esa planta que de cualquier otra.</p>
+    </div>
+    <span class="dims" id="dims">180 m × 170 m</span>
+  </header>
+
+  <div class="layout">
+    <section class="sheet map-sheet" aria-label="Plano del campus">
+      <div class="toolbar">
+        <div class="group" role="group" aria-label="Especie que se añade al hacer clic">
+          <span class="label">Añadir</span>
+          <button class="chip" id="chipA" data-sp="0"><span class="dot a"></span><span class="nm"></span></button>
+          <button class="chip" id="chipB" data-sp="1"><span class="dot b"></span><span class="nm"></span></button>
+        </div>
+        <div class="group">
+          <span class="label">Diagrama</span>
+          <div class="seg" id="viewSeg" role="group" aria-label="Qué plantas generan el diagrama">
+            <button data-view="both">Ambas</button>
+            <button data-view="0" class="nmA"></button>
+            <button data-view="1" class="nmB"></button>
+          </div>
+          <button class="btn ghost small" type="button" id="btnReplay">▶ Ver cómo se forma</button>
+        </div>
+      </div>
+
+      <div class="map-box" id="mapBox">
+        <svg id="map" viewBox="-13 -5 197 189" role="img" aria-label="Plano dibujado del campus, 180 por 170 metros, con zonas verdes, edificios, parqueadero y vías">
+          <defs>
+            <clipPath id="clipRect"><rect x="0" y="0" width="180" height="170"></rect></clipPath>
+            <pattern id="grass" width="6" height="6" patternUnits="userSpaceOnUse" class="z-dots">
+              <circle cx="1.5" cy="1.5" r=".45"></circle><circle cx="4.5" cy="4.5" r=".35"></circle>
+            </pattern>
+            <pattern id="hatch" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)" class="z-hatch">
+              <line x1="0" y1="0" x2="0" y2="3"></line>
+            </pattern>
+            <mask id="greenMask" maskUnits="userSpaceOnUse" x="0" y="0" width="180" height="170"></mask>
+          </defs>
+          <g id="campusLayer" clip-path="url(#clipRect)"></g>
+          <g id="gridLayer" class="grid"></g>
+          <g id="cellLayer" clip-path="url(#clipRect)" mask="url(#greenMask)"></g>
+          <g id="delLayer" class="del" clip-path="url(#clipRect)"></g>
+          <g id="labelLayer"></g>
+          <path id="hoverCell" class="hover" d="" mask="url(#greenMask)"></path>
+          <rect class="frame" x="0" y="0" width="180" height="170"></rect>
+          <g id="ptLayer"></g>
+          <g id="axisLayer" class="axis"></g>
+        </svg>
+        <div class="overlay-empty" id="emptyMsg" hidden><b>El campus está vacío</b>Haz clic donde encontraste una planta o escribe sus coordenadas en el panel.</div>
+        <div class="caption" id="caption" hidden><span></span></div>
+        <div class="tip" id="tip" hidden></div>
+      </div>
+
+      <div class="statusbar">
+        <div class="legend" aria-label="Leyenda del plano">
+          <span><i class="sw green"></i>Zona verde</span>
+          <span><i class="sw bldg"></i>Edificio</span>
+          <span><i class="sw park"></i>Parqueadero</span>
+          <span><i class="sw house"></i>Casa</span>
+          <span><i class="sw road"></i>Vía</span>
+        </div>
+        <span>Cursor: <span class="mono" id="cursor">—</span></span>
+      </div>
+      <div class="hint">El diagrama solo cubre las zonas verdes, y las plantas solo se pueden registrar ahí. Clic para añadir · arrastra un punto para moverlo · <kbd>Supr</kbd> borra el seleccionado · <kbd>1</kbd> <kbd>2</kbd> cambian de especie</div>
+    </section>
+
+    <aside>
+      <section class="sheet panel" aria-labelledby="hSp">
+        <h2 id="hSp">Especies</h2>
+        <p class="sub">Escribe el nombre de las dos especies que están estudiando.</p>
+        <div class="species-row"><span class="dot a"></span><input type="text" id="nameA" maxlength="40" aria-label="Nombre de la especie A"><span class="count" id="countA">0</span></div>
+        <div class="species-row"><span class="dot b"></span><input type="text" id="nameB" maxlength="40" aria-label="Nombre de la especie B"><span class="count" id="countB">0</span></div>
+      </section>
+
+      <section class="sheet panel" aria-labelledby="hAdd">
+        <h2 id="hAdd">Añadir por coordenadas</h2>
+        <p class="sub">El origen (0, 0) es la esquina inferior izquierda. X va de 0 a 180 m y Y de 0 a 170 m.</p>
+        <form class="coord-form" id="coordForm" novalidate>
+          <label>X (m)<input type="number" id="inX" min="0" max="180" step="0.1" placeholder="0 – 180" required></label>
+          <label>Y (m)<input type="number" id="inY" min="0" max="170" step="0.1" placeholder="0 – 170" required></label>
+          <label class="full">Especie<select id="inSp"><option value="0"></option><option value="1"></option></select></label>
+          <button class="btn full" type="submit">Añadir planta</button>
+          <p class="form-msg full" id="formMsg" role="status"></p>
+        </form>
+      </section>
+
+      <section class="sheet panel" aria-labelledby="hStats">
+        <h2 id="hStats">Lectura del diagrama</h2>
+        <div class="share-bar" aria-hidden="true"><span class="a" id="barA"></span><span class="b" id="barB"></span></div>
+        <div class="stats" id="stats"></div>
+        <p class="reading" id="reading"></p>
+      </section>
+
+      <section class="sheet panel" aria-labelledby="hList">
+        <h2 id="hList">Plantas registradas</h2>
+        <div class="list" id="list"></div>
+      </section>
+
+      <section class="sheet panel" aria-labelledby="hLayers">
+        <h2 id="hLayers">Vista</h2>
+        <div class="layers">
+          <div class="row"><span>Animación</span>
+            <select id="speedSel" aria-label="Velocidad de la animación">
+              <option value="0.6">Lenta</option>
+              <option value="1">Normal</option>
+              <option value="1.8">Rápida</option>
+              <option value="0">Sin animación</option>
+            </select>
+          </div>
+          <div class="row"><span>Opacidad de las celdas</span><input type="range" id="cellOp" min="0" max="1" step="0.05" aria-label="Opacidad de las celdas"></div>
+          <label class="switch"><input type="checkbox" id="labelChk"> Nombres de las zonas</label>
+          <label class="switch"><input type="checkbox" id="gridChk"> Cuadrícula cada 10 m</label>
+          <label class="switch"><input type="checkbox" id="delChk"> Triangulación de Delaunay</label>
+        </div>
+      </section>
+
+      <section class="sheet panel" aria-labelledby="hData">
+        <h2 id="hData">Datos</h2>
+        <p class="sub">Formato CSV: especie, x, y. Puedes pegar datos desde una hoja de cálculo.</p>
+        <textarea id="csv" rows="4" aria-label="Datos en CSV" placeholder="especie,x,y&#10;A,25.5,140&#10;B,60,98"></textarea>
+        <div class="btn-row">
+          <button class="btn ghost" type="button" id="btnCopy">Copiar CSV</button>
+          <button class="btn ghost" type="button" id="btnImport">Importar</button>
+        </div>
+        <div class="clear-row" role="group" aria-label="Borrar plantas registradas">
+          <span class="label">Borrar</span>
+          <button class="btn danger small" type="button" data-clear="0"><span class="dot a"></span><span class="nm"></span></button>
+          <button class="btn danger small" type="button" data-clear="1"><span class="dot b"></span><span class="nm"></span></button>
+          <button class="btn danger small" type="button" data-clear="all"><span class="nm">Todas</span></button>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script>
+(() => {
+  const W = 180, H = 170, AREA = W * H;
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const KEY = 'voronoi-campus-v2';
+  const $ = id => document.getElementById(id);
+  const fmt = (n, d = 1) => n.toLocaleString('es-CO', { maximumFractionDigits: d, minimumFractionDigits: 0 });
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const round = (v, step) => Math.round(v / step) * step;
+  const CODES = ['A', 'B'];
+  const CLS = ['a', 'b'];
+  const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- Plano del campus ----------
+  // Trazado a partir del plano de la universidad (lámina de 758 × 678 px) y escalado al rectángulo de 180 × 170 m.
+  // Las coordenadas están en píxeles de esa lámina; PX las convierte a metros en pantalla (y hacia abajo).
+  const PX = ([u, v]) => [u * W / 758, v * H / 678];
+  const CAMPUS = {
+    buildings: [
+      { pts: [[410, 282], [490, 282], [490, 315], [447, 315], [447, 321], [410, 321]] },
+      { pts: [[271, 344], [331, 346], [414, 514], [371, 536]] },
+      { pts: [[358, 340], [490, 342], [615, 372], [628, 497], [431, 493]] },
+      { pts: [[618, 322], [713, 322], [713, 352], [690, 352], [690, 545], [640, 545], [640, 352], [618, 352]] },
+      { pts: [[418, 522], [640, 522], [640, 545], [690, 545], [697, 550], [697, 598], [420, 592]], name: 'Edificio G' },
+      { pts: [[728, 288], [770, 288], [770, 605], [728, 605]] },
+      { pts: [[697, 192], [770, 186], [770, 268], [702, 268]] },
+    ],
+    parking: [{ pts: [[90, 318], [240, 318], [398, 632], [108, 625]], name: 'Parqueadero' }],
+    // El muro blanco de arriba encierra una casa: todo su interior queda fuera de la zona verde.
+    house: [{ pts: [[283, -10], [285, 226], [297, 240], [655, 250], [671, 240], [678, 170], [690, 158], [742, 155], [742, -10]], name: 'Casa' }],
+    roads: [
+      { pts: [[18, -10], [52, 650], [66, 658], [770, 665]], w: 2.6 },
+      { pts: [[-4, 172], [24, 690]], w: 1.1 },
+    ],
+    labels: [
+      { at: [520, 575], text: 'EDIFICIO G' },
+      { at: [190, 520], text: 'PARQUEADERO' },
+      { at: [500, 125], text: 'CASA' },
+      { at: [150, 170], text: 'zona verde', soft: true },
+      { at: [230, 655], text: 'vía', soft: true },
+    ],
+  };
+  const toM = pts => pts.map(PX);
+  CAMPUS.buildings.forEach(b => b.m = toM(b.pts));
+  CAMPUS.parking.forEach(b => b.m = toM(b.pts));
+  CAMPUS.house.forEach(b => b.m = toM(b.pts));
+  CAMPUS.roads.forEach(r => r.m = toM(r.pts));
+
+  // Máscara de zona verde en una cuadrícula de 0,5 m: sirve para recortar el diagrama, medir áreas y validar puntos.
+  const RES = 2, GW = W * RES, GH = H * RES, CELL_M2 = 1 / (RES * RES);
+  const green = new Uint8Array(GW * GH);
+  let greenArea = 0;
+  function traceObstacles(ctx) {
+    const poly = m => { ctx.beginPath(); m.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.fill(); };
+    [...CAMPUS.buildings, ...CAMPUS.parking, ...CAMPUS.house].forEach(b => poly(b.m));
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    CAMPUS.house.forEach(h => { ctx.lineWidth = 2.4; ctx.beginPath(); h.m.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); });
+    CAMPUS.roads.forEach(r => { ctx.lineWidth = r.w; ctx.beginPath(); r.m.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); });
+  }
+  (function buildGreen() {
+    const c = document.createElement('canvas'); c.width = GW; c.height = GH;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, GW, GH);
+    ctx.scale(RES, RES); ctx.fillStyle = '#000'; ctx.strokeStyle = '#000';
+    traceObstacles(ctx);
+    const px = ctx.getImageData(0, 0, GW, GH).data;
+    let n = 0;
+    for (let k = 0; k < GW * GH; k++) { green[k] = px[k * 4] > 127 ? 1 : 0; n += green[k]; }
+    greenArea = n * CELL_M2;
+  })();
+  const isGreen = (x, y) => {
+    const i = Math.floor(x * RES), j = Math.floor((H - y) * RES);
+    return i >= 0 && j >= 0 && i < GW && j < GH && green[j * GW + i] === 1;
+  };
+
+  const pip = (pt, poly) => { // punto en polígono (pantalla)
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  const segDist = (p, a, b) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const t = clamp(((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy), 0, 1);
+    return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+  };
+  function zoneAt(x, y) {
+    const p = [x, H - y];
+    for (const b of CAMPUS.buildings) if (pip(p, b.m)) return b.name || 'edificio';
+    for (const b of CAMPUS.house) if (pip(p, b.m)) return 'casa';
+    for (const b of CAMPUS.parking) if (pip(p, b.m)) return 'parqueadero';
+    for (const r of CAMPUS.roads) for (let i = 0; i < r.m.length - 1; i++) if (segDist(p, r.m[i], r.m[i + 1]) <= r.w / 2 + .3) return 'vía';
+    for (const h of CAMPUS.house) for (let i = 0; i < h.m.length - 1; i++) if (segDist(p, h.m[i], h.m[i + 1]) <= 1.5) return 'muro de la casa';
+    return isGreen(x, y) ? 'zona verde' : 'borde de una zona construida';
+  }
+  const notGreenMsg = (x, y) => `(${fmt(x)}, ${fmt(y)}) cae en ${zoneAt(x, y)}. Las plantas solo se registran en zonas verdes.`;
+
+  // ---------- Estado ----------
+  let uid = 1;
+  const defaults = () => ({
+    names: ['Especie A', 'Especie B'], points: [],
+    active: 0, view: 'both', cellOp: 1, grid: true, del: false, labels: true, speed: 1, pal: 6,
+  });
+  let S = defaults();
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (saved && Array.isArray(saved.points)) {
+      S = Object.assign(defaults(), saved);
+      if (saved.pal !== 6) { S.cellOp = 1; S.pal = 6; } // la paleta nueva usa celdas en tono pastel más opacas
+      S.points = saved.points.filter(p => isFinite(p.x) && isFinite(p.y)).map(p => ({ id: uid++, s: p.s ? 1 : 0, x: +p.x, y: +p.y }));
+    }
+  } catch (e) { /* sin almacenamiento: valores por defecto */ }
+
+  let selected = null, newId = null;
+  let vor = null, vpts = [];
+  let saveTimer = null;
+  const save = () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try { localStorage.setItem(KEY, JSON.stringify({ ...S, points: S.points.map(({ s, x, y }) => ({ s, x, y })) })); } catch (e) {}
+    }, 200);
+  };
+
+  const el = (tag, attrs = {}, parent) => {
+    const n = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  };
+  const sy = y => H - y;
+  const ptsAttr = m => m.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+
+  // ---------- Dibujo estático ----------
+  function drawCampus() {
+    const g = $('campusLayer'); g.innerHTML = '';
+    el('rect', { x: 0, y: 0, width: W, height: H, class: 'z-green' }, g);
+    el('rect', { x: 0, y: 0, width: W, height: H, fill: 'url(#grass)' }, g);
+    CAMPUS.roads.forEach(r => el('polyline', { points: ptsAttr(r.m), class: 'z-road', 'stroke-width': r.w }, g));
+    CAMPUS.parking.forEach(p => {
+      el('polygon', { points: ptsAttr(p.m), class: 'z-park' }, g);
+      // líneas de los puestos, recortadas al polígono del parqueadero
+      const cp = el('clipPath', { id: 'parkClip' }, g); el('polygon', { points: ptsAttr(p.m) }, cp);
+      const lines = el('g', { class: 'z-park-lines', 'clip-path': 'url(#parkClip)' }, g);
+      for (let y = 80; y < 170; y += 5) el('line', { x1: 15, y1: y, x2: 100, y2: y }, lines);
+    });
+    CAMPUS.buildings.forEach(b => el('polygon', { points: ptsAttr(b.m), class: 'z-bldg' }, g));
+    CAMPUS.house.forEach(h => {
+      el('polygon', { points: ptsAttr(h.m), class: 'z-house' }, g);
+      el('polygon', { points: ptsAttr(h.m), fill: 'url(#hatch)' }, g);
+      el('polyline', { points: ptsAttr(h.m), class: 'z-wall' }, g);
+    });
+    // Máscara SVG: blanco = zona verde (se ve el diagrama), negro = construido (se oculta)
+    const mk = $('greenMask'); mk.innerHTML = '';
+    el('rect', { x: 0, y: 0, width: W, height: H, fill: '#fff' }, mk);
+    [...CAMPUS.buildings, ...CAMPUS.parking, ...CAMPUS.house].forEach(b => el('polygon', { points: ptsAttr(b.m), fill: '#000' }, mk));
+    CAMPUS.house.forEach(h => el('polyline', { points: ptsAttr(h.m), fill: 'none', stroke: '#000', 'stroke-width': 2.4, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, mk));
+    CAMPUS.roads.forEach(r => el('polyline', { points: ptsAttr(r.m), fill: 'none', stroke: '#000', 'stroke-width': r.w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, mk));
+  }
+  function drawLabels() {
+    const g = $('labelLayer'); g.innerHTML = '';
+    if (!S.labels) return;
+    CAMPUS.labels.forEach(l => { const [x, y] = PX(l.at); const t = el('text', { x, y, class: 'z-label' + (l.soft ? ' soft' : '') }, g); t.textContent = l.text; });
+  }
+  function drawAxes() {
+    const g = $('axisLayer'); g.innerHTML = '';
+    for (let x = 0; x <= W; x += 20) { const t = el('text', { x, y: H + 5, 'text-anchor': 'middle' }, g); t.textContent = x; }
+    const ys = []; for (let y = 0; y <= 160; y += 20) ys.push(y); ys.push(170);
+    ys.forEach(y => { const t = el('text', { x: -2.2, y: sy(y) + 1.2, 'text-anchor': 'end' }, g); t.textContent = y; });
+    const tx = el('text', { x: W / 2, y: H + 10.5, 'text-anchor': 'middle', class: 'title' }, g); tx.textContent = 'X · largo (m)';
+    const ty = el('text', { x: 0, y: 0, 'text-anchor': 'middle', class: 'title', transform: `translate(-10.5 ${H / 2}) rotate(-90)` }, g); ty.textContent = 'Y · ancho (m)';
+  }
+  function drawGrid() {
+    const g = $('gridLayer'); g.innerHTML = '';
+    if (!S.grid) return;
+    for (let x = 10; x < W; x += 10) el('line', { x1: x, y1: 0, x2: x, y2: H, class: x % 50 === 0 ? 'major' : '' }, g);
+    for (let y = 10; y < H; y += 10) el('line', { x1: 0, y1: sy(y), x2: W, y2: sy(y), class: y % 50 === 0 ? 'major' : '' }, g);
+  }
+
+  // ---------- Voronoi ----------
+  const shoelace = poly => { let a = 0; for (let i = 0; i < poly.length - 1; i++) a += poly[i][0] * poly[i + 1][1] - poly[i + 1][0] * poly[i][1]; return Math.abs(a) / 2; };
+  const polyPath = poly => 'M' + poly.map(([x, y]) => `${x.toFixed(2)},${sy(y).toFixed(2)}`).join('L') + 'Z';
+  const areas = new Map();
+  let reach = []; // distancia máxima de cada semilla al borde de su celda
+
+  function compute() {
+    vpts = S.view === 'both' ? S.points.slice() : S.points.filter(p => p.s === +S.view);
+    areas.clear(); reach = []; vor = null;
+    if (!vpts.length) return;
+    vor = d3.Delaunay.from(vpts, p => p.x, p => p.y).voronoi([0, 0, W, H]);
+    // Área de cada celda contando solo la zona verde: cada muestra de 0,5 × 0,5 m se asigna a su planta más cercana.
+    const acc = new Float64Array(vpts.length);
+    const del = vor.delaunay;
+    let hint = 0;
+    for (let j = 0; j < GH; j++) {
+      const y = H - (j + .5) / RES, row = j * GW;
+      for (let i = 0; i < GW; i++) {
+        if (!green[row + i]) continue;
+        hint = del.find((i + .5) / RES, y, hint);
+        acc[hint] += CELL_M2;
+      }
+    }
+    vpts.forEach((p, i) => {
+      const poly = vor.cellPolygon(i);
+      areas.set(p.id, acc[i]);
+      reach[i] = poly ? Math.max(...poly.map(([x, y]) => Math.hypot(x - p.x, y - p.y))) : 0;
+    });
+  }
+
+  let growEls = []; // [{clip, front}]
+  function drawCells(radius = Infinity) {
+    const g = $('cellLayer'); g.innerHTML = '';
+    const d = $('delLayer'); d.innerHTML = '';
+    growEls = [];
+    if (!vor) return;
+    const defs = el('defs', {}, g);
+    vpts.forEach((p, i) => {
+      const poly = vor.cellPolygon(i); if (!poly) return;
+      const cp = el('clipPath', { id: 'grow' + i }, defs);
+      const clip = el('circle', { cx: p.x, cy: sy(p.y), r: isFinite(radius) ? radius : 999 }, cp);
+      const grp = el('g', { 'clip-path': `url(#grow${i})` }, g);
+      el('path', { d: polyPath(poly), class: 'cell ' + CLS[p.s], 'fill-opacity': S.cellOp }, grp);
+      const front = el('circle', { cx: p.x, cy: sy(p.y), r: isFinite(radius) ? radius : 0, class: 'front ' + CLS[p.s], opacity: isFinite(radius) ? 1 : 0 }, grp);
+      growEls.push({ clip, front });
+    });
+    el('rect', { x: 0, y: 0, width: W, height: H, fill: 'url(#grass)', opacity: .15, 'pointer-events': 'none' }, g); // textura de vegetación sobre las celdas
+    if (S.del && vpts.length > 1) {
+      const { halfedges, triangles } = vor.delaunay;
+      for (let e = 0; e < triangles.length; e++) {
+        if (halfedges[e] > -1 && e < halfedges[e]) continue;
+        const a = vpts[triangles[e]], b = vpts[triangles[e % 3 === 2 ? e - 2 : e + 1]];
+        el('line', { x1: a.x, y1: sy(a.y), x2: b.x, y2: sy(b.y) }, d);
+      }
+      if (vpts.length === 2) { const [a, b] = vpts; el('line', { x1: a.x, y1: sy(a.y), x2: b.x, y2: sy(b.y) }, d); }
+    }
+  }
+
+  // ---------- Animación: cada planta "crece" a la misma velocidad; donde dos frentes chocan nace la frontera ----------
+  let raf = null;
+  const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  function stopGrowth() {
+    if (raf) cancelAnimationFrame(raf); raf = null;
+    $('caption').hidden = true; $('delLayer').style.opacity = 1;
+  }
+  function playGrowth() {
+    stopGrowth();
+    if (!vor || !S.speed || reduceMotion) { drawCells(); return; }
+    const R = Math.max(...reach, 1);
+    const dur = clamp(R * 16, 1400, 3400) / S.speed;
+    drawCells(0);
+    const del = $('delLayer'); del.style.opacity = 0;
+    const cap = $('caption'), capText = cap.firstElementChild; cap.hidden = false;
+    const t0 = performance.now();
+    const step = now => {
+      const t = clamp((now - t0) / dur, 0, 1), r = ease(t) * R;
+      growEls.forEach(({ clip, front }) => { clip.setAttribute('r', r); front.setAttribute('r', r); front.setAttribute('opacity', 1 - t * t); });
+      del.style.opacity = t > .85 ? (t - .85) / .15 : 0;
+      capText.innerHTML = vpts.length < 2
+        ? `Una sola planta ocupa toda la zona verde <span class="mono">· r = ${fmt(r, 0)} m</span>`
+        : `Las plantas crecen a la misma velocidad; donde se tocan nace una frontera <span class="mono">· r = ${fmt(r, 0)} m</span>`;
+      if (t < 1) raf = requestAnimationFrame(step);
+      else { raf = null; drawCells(); del.style.opacity = 1; setTimeout(() => { if (!raf) cap.hidden = true; }, 900); }
+    };
+    raf = requestAnimationFrame(step);
+  }
+
+  function drawPoints() {
+    const g = $('ptLayer'); g.innerHTML = '';
+    const inView = new Set(vpts.map(p => p.id));
+    S.points.forEach(p => {
+      const grp = el('g', { class: 'pt ' + CLS[p.s] + (inView.has(p.id) ? '' : ' dim') + (p.id === newId ? ' new' : ''), 'data-pid': p.id }, g);
+      if (p.id === newId && !reduceMotion) el('circle', { cx: p.x, cy: sy(p.y), r: 2.5, class: 'pulse' }, grp);
+      if (p.id === selected) el('circle', { cx: p.x, cy: sy(p.y), r: 3.4, class: 'ring' }, grp);
+      el('circle', { cx: p.x, cy: sy(p.y), r: 4, class: 'hit' }, grp);
+      el('circle', { cx: p.x, cy: sy(p.y), r: 2.1, class: 'core' }, grp);
+    });
+    $('emptyMsg').hidden = S.points.length > 0;
+    $('btnReplay').disabled = !vpts.length;
+  }
+
+  // ---------- Paneles ----------
+  const labelOf = p => { const same = S.points.filter(q => q.s === p.s); return CODES[p.s] + (same.indexOf(p) + 1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function renderNames() {
+    $('chipA').querySelector('.nm').textContent = S.names[0];
+    $('chipB').querySelector('.nm').textContent = S.names[1];
+    document.querySelector('.nmA').textContent = S.names[0];
+    document.querySelector('.nmB').textContent = S.names[1];
+    const opts = $('inSp').options; opts[0].textContent = S.names[0]; opts[1].textContent = S.names[1];
+    document.querySelectorAll('[data-clear="0"]:not(.armed) .nm, [data-clear="1"]:not(.armed) .nm').forEach(n => n.textContent = S.names[+n.parentElement.dataset.clear]);
+    if (document.activeElement !== $('nameA')) $('nameA').value = S.names[0];
+    if (document.activeElement !== $('nameB')) $('nameB').value = S.names[1];
+  }
+  function renderControls() {
+    $('chipA').setAttribute('aria-pressed', S.active === 0);
+    $('chipB').setAttribute('aria-pressed', S.active === 1);
+    document.querySelectorAll('#viewSeg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === String(S.view)));
+    $('cellOp').value = S.cellOp; $('gridChk').checked = S.grid; $('delChk').checked = S.del; $('labelChk').checked = S.labels;
+    $('speedSel').value = String(S.speed); $('inSp').value = S.active;
+  }
+  const areaText = p => areas.has(p.id) ? fmt(areas.get(p.id), 0) + ' m²' : '—';
+  function renderList() {
+    const box = $('list');
+    if (!S.points.length) { box.innerHTML = '<p class="empty">Aún no hay plantas. Haz clic en el plano o escribe sus coordenadas.</p>'; return; }
+    const sorted = S.points.slice().sort((a, b) => a.s - b.s || a.id - b.id);
+    box.innerHTML = `<table><thead><tr><th>Planta</th><th>X</th><th>Y</th><th style="text-align:right">Celda</th><th></th></tr></thead><tbody>${
+      sorted.map(p => `<tr data-id="${p.id}" class="${p.id === selected ? 'sel' : ''}">
+        <td><span class="tag" data-act="select" title="${esc(zoneAt(p.x, p.y))}"><span class="dot ${CLS[p.s]}"></span>${labelOf(p)}${isGreen(p.x, p.y) ? '' : ' <span class="warn" aria-label="fuera de zona verde">⚠</span>'}</span></td>
+        <td><input type="number" step="0.1" min="0" max="${W}" value="${+p.x.toFixed(1)}" data-k="x" aria-label="X de ${labelOf(p)}"></td>
+        <td><input type="number" step="0.1" min="0" max="${H}" value="${+p.y.toFixed(1)}" data-k="y" aria-label="Y de ${labelOf(p)}"></td>
+        <td class="area" data-area>${areaText(p)}</td>
+        <td><button class="x-btn" data-act="del" aria-label="Eliminar ${labelOf(p)}">×</button></td></tr>`).join('')
+    }</tbody></table>`;
+  }
+  function updateListValues() {
+    document.querySelectorAll('#list tr[data-id]').forEach(tr => {
+      const p = S.points.find(q => q.id === +tr.dataset.id); if (!p) return;
+      tr.classList.toggle('sel', p.id === selected);
+      tr.querySelectorAll('input').forEach(inp => { if (inp !== document.activeElement) inp.value = +p[inp.dataset.k].toFixed(1); });
+      tr.querySelector('[data-area]').textContent = areaText(p);
+    });
+  }
+
+  function renderStats() {
+    const n = [0, 1].map(s => S.points.filter(p => p.s === s).length);
+    $('countA').textContent = n[0] + (n[0] === 1 ? ' planta' : ' plantas');
+    $('countB').textContent = n[1] + (n[1] === 1 ? ' planta' : ' plantas');
+    const ha = greenArea / 10000, AREA = greenArea;
+    const stats = $('stats'), reading = $('reading');
+    const off = vpts.filter(p => !isGreen(p.x, p.y)).length;
+    const greenNote = off ? ` Ojo: ${off} ${off === 1 ? 'registro está' : 'registros están'} fuera de la zona verde (marcados con ⚠ en la lista).` : '';
+    if (S.view === 'both') {
+      const sum = [0, 0]; vpts.forEach(p => sum[p.s] += areas.get(p.id) || 0);
+      const tot = sum[0] + sum[1] || 1;
+      $('barA').style.width = (sum[0] / tot * 100) + '%';
+      $('barB').style.width = (sum[1] / tot * 100) + '%';
+      if (!vpts.length) { stats.innerHTML = ''; reading.textContent = 'Cuando registres plantas verás aquí qué parte del campus queda más cerca de cada especie.'; return; }
+      stats.innerHTML = [0, 1].map(s => `<div class="stat"><span class="k"><span class="dot ${CLS[s]}"></span>${esc(S.names[s])}</span>
+        <span class="v">${fmt(sum[s] / AREA * 100)} % <small>de la zona verde</small></span>
+        <span class="k">${fmt(sum[s], 0)} m² · ${fmt(n[s] / ha)} plantas/ha</span></div>`).join('');
+      if (!n[0] || !n[1]) reading.textContent = `Solo hay registros de ${S.names[n[0] ? 0 : 1]}, así que ocupa toda la zona verde.` + greenNote;
+      else {
+        const lead = sum[0] >= sum[1] ? 0 : 1;
+        reading.textContent = `${S.names[lead]} es la planta más cercana en el ${fmt(sum[lead] / AREA * 100, 0)} % de la zona verde. Cada ejemplar de ${S.names[0]} abarca en promedio ${fmt(sum[0] / n[0], 0)} m² y cada uno de ${S.names[1]}, ${fmt(sum[1] / n[1], 0)} m². Celdas más pequeñas indican plantas más agrupadas.` + greenNote;
+      }
+    } else {
+      const s = +S.view;
+      const arr = vpts.map(p => areas.get(p.id) || 0);
+      $('barA').style.width = s === 0 && arr.length ? '100%' : '0%';
+      $('barB').style.width = s === 1 && arr.length ? '100%' : '0%';
+      if (!arr.length) { stats.innerHTML = ''; reading.textContent = `No hay registros de ${S.names[s]} todavía.`; return; }
+      const mean = arr.reduce((a, b) => a + b, 0) / arr.length, mn = Math.min(...arr), mx = Math.max(...arr);
+      stats.innerHTML = `
+        <div class="stat"><span class="k"><span class="dot ${CLS[s]}"></span>Área media por planta</span><span class="v">${fmt(mean, 0)} <small>m²</small></span></div>
+        <div class="stat"><span class="k">Densidad</span><span class="v">${fmt(arr.length / ha)} <small>plantas/ha</small></span></div>
+        <div class="stat"><span class="k">Celda más pequeña</span><span class="v">${fmt(mn, 0)} <small>m²</small></span></div>
+        <div class="stat"><span class="k">Celda más grande</span><span class="v">${fmt(mx, 0)} <small>m²</small></span></div>`;
+      const ratio = mn > 0 ? mx / mn : Infinity;
+      reading.textContent = (arr.length < 2
+        ? 'Con un solo ejemplar, su celda cubre toda la zona verde.'
+        : `La celda más grande es ${isFinite(ratio) ? fmt(ratio) + ' veces' : 'mucho'} mayor que la más pequeña. ${ratio > 6 ? 'Las plantas están agrupadas en algunas zonas.' : 'Las plantas están repartidas de forma bastante pareja.'}`) + greenNote;
+    }
+  }
+
+  // animate: true -> reproduce el crecimiento; false -> redibujo inmediato (arrastre, edición)
+  function changed({ list = false, animate = false } = {}) {
+    compute();
+    if (animate) playGrowth(); else { stopGrowth(); drawCells(); }
+    drawPoints(); updateHover(); renderStats();
+    if (list) renderList(); else updateListValues();
+    save();
+  }
+
+  // ---------- Interacción en el plano ----------
+  const svg = $('map'), tip = $('tip'), box = $('mapBox');
+  function toMap(evt) {
+    const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    return { x: p.x, y: H - p.y };
+  }
+  const inside = p => p.x >= 0 && p.x <= W && p.y >= 0 && p.y <= H;
+  let drag = null, press = null, hoverXY = null;
+
+  svg.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    const t = e.target.closest('[data-pid]');
+    if (t) {
+      const id = +t.dataset.pid;
+      drag = { id, sx: e.clientX, sy: e.clientY, moved: false };
+      selected = id; svg.setPointerCapture(e.pointerId);
+      drawPoints(); updateListValues();
+    } else press = { sx: e.clientX, sy: e.clientY, p: toMap(e) };
+  });
+  svg.addEventListener('pointermove', e => {
+    const p = toMap(e);
+    $('cursor').textContent = inside(p) ? `x ${fmt(p.x)} m · y ${fmt(p.y)} m` : '—';
+    if (drag) {
+      if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 3) return;
+      drag.moved = true; svg.classList.add('dragging'); newId = null;
+      const pt = S.points.find(q => q.id === drag.id);
+      const nx = round(clamp(p.x, 0, W), 0.1), ny = round(clamp(p.y, 0, H), 0.1);
+      if (!isGreen(nx, ny)) { $('cursor').textContent = `${zoneAt(nx, ny)}: no se puede soltar aquí`; return; }
+      pt.x = nx; pt.y = ny;
+      hoverXY = { x: pt.x, y: pt.y, cx: e.clientX, cy: e.clientY };
+      changed();
+      return;
+    }
+    hoverXY = inside(p) ? { ...p, cx: e.clientX, cy: e.clientY } : null;
+    updateHover();
+  });
+  svg.addEventListener('pointerup', e => {
+    if (drag) { if (drag.moved) renderList(); drag = null; svg.classList.remove('dragging'); return; }
+    if (press && Math.hypot(e.clientX - press.sx, e.clientY - press.sy) < 6 && inside(press.p)) {
+      const x = round(press.p.x, 0.5), y = round(press.p.y, 0.5);
+      press = null;
+      if (!isGreen(x, y)) { toast(notGreenMsg(x, y)); return; }
+      const p = addPoint(S.active, x, y);
+      toast(`${labelOf(p)} en (${fmt(p.x)}, ${fmt(p.y)}) · ${zoneAt(p.x, p.y)}`);
+    }
+    press = null;
+  });
+  svg.addEventListener('pointerleave', () => { if (!drag) { hoverXY = null; updateHover(); $('cursor').textContent = '—'; } });
+
+  function updateHover() {
+    const hp = $('hoverCell');
+    if (!hoverXY || !vor || raf || !isGreen(hoverXY.x, hoverXY.y)) { hp.setAttribute('d', ''); tip.hidden = true; return; }
+    const i = vor.delaunay.find(hoverXY.x, hoverXY.y);
+    const poly = vor.cellPolygon(i), p = vpts[i];
+    if (!poly || !p) { hp.setAttribute('d', ''); tip.hidden = true; return; }
+    hp.setAttribute('d', polyPath(poly));
+    const nb = [...vor.delaunay.neighbors(i)].filter(j => j >= 0 && vpts[j]); // con puntos repetidos d3 puede dar índices vacíos
+    const nbSame = nb.filter(j => vpts[j].s === p.s).length;
+    const r = box.getBoundingClientRect();
+    tip.innerHTML = `<b>${esc(labelOf(p))} · ${esc(S.names[p.s])}</b><br>
+      <span class="mono">(${fmt(p.x)}, ${fmt(p.y)}) m</span> · ${esc(zoneAt(p.x, p.y))}<br>
+      Celda: ${fmt(areas.get(p.id) || 0, 0)} m²<br>
+      Vecinas: ${nb.length}${S.view === 'both' && nb.length ? ` (${nbSame} de la misma especie)` : ''}`;
+    tip.hidden = false;
+    tip.style.left = clamp(hoverXY.cx - r.left, 95, r.width - 95) + 'px';
+    tip.style.top = Math.max(hoverXY.cy - r.top, 110) + 'px';
+  }
+
+  function addPoint(s, x, y) {
+    const p = { id: uid++, s, x: clamp(x, 0, W), y: clamp(y, 0, H) };
+    S.points.push(p); selected = p.id; newId = p.id;
+    if (S.view !== 'both' && +S.view !== s) { S.view = 'both'; renderControls(); }
+    changed({ list: true, animate: true });
+    return p;
+  }
+  function removePoint(id) {
+    S.points = S.points.filter(p => p.id !== id);
+    if (selected === id) selected = null;
+    newId = null;
+    changed({ list: true });
+  }
+
+  document.addEventListener('keydown', e => {
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selected != null) { e.preventDefault(); removePoint(selected); }
+    if (e.key === 'Escape') { selected = null; drawPoints(); updateListValues(); }
+    if (e.key === '1' || e.key === '2') { S.active = +e.key - 1; renderControls(); save(); }
+  });
+
+  // ---------- Controles ----------
+  $('chipA').onclick = () => { S.active = 0; renderControls(); save(); };
+  $('chipB').onclick = () => { S.active = 1; renderControls(); save(); };
+  document.querySelectorAll('#viewSeg button').forEach(b => b.onclick = () => { S.view = b.dataset.view; newId = null; renderControls(); changed({ animate: true }); });
+  $('btnReplay').onclick = () => { newId = null; drawPoints(); playGrowth(); };
+
+  const onName = i => e => { S.names[i] = e.target.value.trim() || ('Especie ' + CODES[i]); renderNames(); renderStats(); renderList(); save(); };
+  $('nameA').addEventListener('input', onName(0));
+  $('nameB').addEventListener('input', onName(1));
+
+  $('coordForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const x = parseFloat(String($('inX').value).replace(',', '.')), y = parseFloat(String($('inY').value).replace(',', '.'));
+    const msg = $('formMsg');
+    if (!isFinite(x) || !isFinite(y)) { msg.textContent = 'Escribe un número en X y en Y.'; return; }
+    if (x < 0 || x > W || y < 0 || y > H) { msg.textContent = `Fuera del campus: X debe estar entre 0 y ${W}, Y entre 0 y ${H}.`; return; }
+    if (!isGreen(x, y)) { msg.textContent = notGreenMsg(x, y); return; }
+    msg.textContent = '';
+    const p = addPoint(+$('inSp').value, x, y);
+    toast(`${labelOf(p)} en (${fmt(x)}, ${fmt(y)}) · ${zoneAt(x, y)}`);
+    $('inX').value = ''; $('inY').value = ''; $('inX').focus();
+  });
+  $('inSp').onchange = e => { S.active = +e.target.value; renderControls(); save(); };
+
+  $('list').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-id]'); if (!tr) return;
+    const id = +tr.dataset.id, act = e.target.closest('[data-act]');
+    if (act && act.dataset.act === 'del') { removePoint(id); return; }
+    selected = id; drawPoints(); updateListValues();
+  });
+  $('list').addEventListener('input', e => {
+    const inp = e.target; if (inp.tagName !== 'INPUT') return;
+    const p = S.points.find(q => q.id === +inp.closest('tr').dataset.id); if (!p) return;
+    const v = parseFloat(inp.value); if (!isFinite(v)) return;
+    const k = inp.dataset.k, nv = clamp(v, 0, k === 'x' ? W : H);
+    const nx = k === 'x' ? nv : p.x, ny = k === 'y' ? nv : p.y;
+    const ok = isGreen(nx, ny);
+    inp.classList.toggle('bad', !ok);
+    inp.title = ok ? '' : notGreenMsg(nx, ny);
+    if (!ok) return;
+    p[k] = nv;
+    selected = p.id; newId = null; changed();
+  });
+
+  $('speedSel').onchange = e => { S.speed = +e.target.value; save(); };
+  $('cellOp').oninput = e => { S.cellOp = +e.target.value; document.querySelectorAll('#cellLayer .cell').forEach(c => c.setAttribute('fill-opacity', S.cellOp)); save(); };
+  $('gridChk').onchange = e => { S.grid = e.target.checked; drawGrid(); save(); };
+  $('labelChk').onchange = e => { S.labels = e.target.checked; drawLabels(); save(); };
+  $('delChk').onchange = e => { S.del = e.target.checked; if (!raf) drawCells(); save(); };
+
+  // ---------- Datos ----------
+  const toCSV = () => 'especie,x,y\n' + S.points.slice().sort((a, b) => a.s - b.s || a.id - b.id)
+    .map(p => `${S.names[p.s].includes(',') ? '"' + S.names[p.s] + '"' : S.names[p.s]},${+p.x.toFixed(2)},${+p.y.toFixed(2)}`).join('\n');
+
+  $('btnCopy').onclick = () => {
+    const text = toCSV(), ta = $('csv'); ta.value = text;
+    const fallback = () => { ta.focus(); ta.select(); toast('El CSV está en el cuadro de texto: cópialo con Ctrl/Cmd + C'); };
+    try { navigator.clipboard.writeText(text).then(() => toast(`${S.points.length} plantas copiadas como CSV`), fallback); } catch (e) { fallback(); }
+  };
+  $('btnImport').onclick = () => {
+    const lines = $('csv').value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const lower = S.names.map(n => n.toLowerCase());
+    const added = [], bad = [], offGreen = [];
+    lines.forEach((line, i) => {
+      const parts = line.split(/[;,\t]/).map(s => s.trim().replace(/^"|"$/g, ''));
+      if (parts.length < 3) { if (i) bad.push(i + 1); return; }
+      let sp, x, y;
+      if (isFinite(parseFloat(parts[0])) && isFinite(parseFloat(parts[1])) && !isFinite(parseFloat(parts[2]))) [x, y, sp] = parts;
+      else [sp, x, y] = parts;
+      x = parseFloat(x); y = parseFloat(y);
+      if (!isFinite(x) || !isFinite(y)) { if (i) bad.push(i + 1); return; }
+      const k = sp.toLowerCase();
+      let s = lower.indexOf(k);
+      if (s < 0) s = ['a', '1', 'especie a'].includes(k) ? 0 : ['b', '2', 'especie b'].includes(k) ? 1 : -1;
+      if (s < 0 || x < 0 || x > W || y < 0 || y > H) { bad.push(i + 1); return; }
+      if (!isGreen(x, y)) { offGreen.push(i + 1); return; }
+      added.push({ id: uid++, s, x, y });
+    });
+    if (!added.length) { toast(offGreen.length ? `Ninguna fila cae en zona verde (filas ${offGreen.slice(0, 6).join(', ')})` : 'No se encontraron filas válidas. Usa el formato especie,x,y'); return; }
+    S.points.push(...added); selected = null; newId = null;
+    changed({ list: true, animate: true });
+    toast(`${added.length} plantas importadas` + (bad.length ? ` · filas con error: ${bad.slice(0, 6).join(', ')}` : '') + (offGreen.length ? ` · fuera de zona verde: ${offGreen.slice(0, 6).join(', ')}` : ''));
+  };
+
+  // Borrar por especie o todo, con un segundo clic para confirmar
+  const disarm = b => { clearTimeout(b._t); b.classList.remove('armed'); b.querySelector('.nm').textContent = b.dataset.clear === 'all' ? 'Todas' : S.names[+b.dataset.clear]; };
+  document.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => {
+    const which = b.dataset.clear;
+    const targets = which === 'all' ? S.points : S.points.filter(p => p.s === +which);
+    const who = which === 'all' ? 'todas las plantas' : S.names[+which];
+    if (!targets.length) { toast(`No hay registros de ${who}`); return; }
+    if (!b.classList.contains('armed')) {
+      document.querySelectorAll('[data-clear].armed').forEach(disarm);
+      b.classList.add('armed');
+      b.querySelector('.nm').textContent = `¿Borrar ${targets.length}? Confirmar`;
+      b._t = setTimeout(() => disarm(b), 3500);
+      return;
+    }
+    disarm(b);
+    const n = targets.length;
+    S.points = which === 'all' ? [] : S.points.filter(p => p.s !== +which);
+    if (!S.points.some(p => p.id === selected)) selected = null;
+    newId = null;
+    changed({ list: true, animate: which !== 'all' });
+    toast(which === 'all' ? `Se borraron las ${n} plantas` : `${n === 1 ? 'Se borró 1 registro' : `Se borraron ${n} registros`} de ${who}; la otra especie sigue intacta`);
+  });
+
+  let toastT = null;
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600);
+  }
+
+  $('dims').textContent = `180 m × 170 m · zona verde ≈ ${fmt(greenArea, 0)} m²`;
+  drawCampus(); drawLabels(); drawAxes(); drawGrid();
+  renderNames(); renderControls();
+  compute(); drawCells(); drawPoints(); renderStats(); renderList();
+})();
+</script>
